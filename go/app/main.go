@@ -26,21 +26,17 @@ func root(c echo.Context) error {
 }
 
 func addItem(c echo.Context) error {
-	// Get form data
 	name := c.FormValue("name")
 	c.Logger().Infof("Receive item: %s", name)
 
 	message := fmt.Sprintf("item received: %s", name)
 	res := Response{Message: message}
 
-	// http.StatusCreated(201) is also good choice.StatusOK
-  // but in that case, you need to implement and return a URL
-  //   that returns information on the posted item.
+	
 	return c.JSON(http.StatusOK, res)
 }
 
 func getImg(c echo.Context) error {
-	// Create image path
 	imgPath := path.Join(ImgDir, c.Param("imageFilename"))
 
 	if !strings.HasSuffix(imgPath, ".jpg") {
@@ -52,6 +48,14 @@ func getImg(c echo.Context) error {
 		imgPath = path.Join(ImgDir, "default.jpg")
 	}
 	return c.File(imgPath)
+}
+
+func addCategory(c echo.Context) error{
+	category := c.FormValue("category")
+	message := fmt.Sprintf("category received: %s",category)
+	res := Response{Message: message}
+
+	return c.JSON(http.StatusOK, res)
 }
 
 func main() {
@@ -74,6 +78,7 @@ func main() {
 	// Routes
 	e.GET("/", root)
 	e.POST("/items", addItem)
+	e.POST("/category",addCategory)
 	e.GET("/image/:imageFilename", getImg)
 
 

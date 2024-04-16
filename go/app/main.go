@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"net/http"
 	"os"
@@ -16,8 +17,17 @@ const (
 	ImgDir = "images"
 )
 
+const (
+	DbDir="../../db"
+)
+
 type Response struct {
 	Message string `json:"message"`
+}
+
+func errMessage(c echo.Context, err error, status int, message string) error {
+	errorMessage := fmt.Sprintf("%s:%s", message, err)
+	return c.JSON(status, Response{Message: errorMessage})
 }
 
 func root(c echo.Context) error {
@@ -54,6 +64,23 @@ func addCategory(c echo.Context) error{
 	category := c.FormValue("category")
 	message := fmt.Sprintf("category received: %s",category)
 	res := Response{Message: message}
+
+	db,err:=sql.Open("sqlite3",DbDir)
+	if err != nil {
+		return errMessage(c, err, http.StatusBadRequest, "Unable to open database")
+	}
+	defer db.Close()
+
+	stmt, err := db.Prepare("INSERT INTO categories(name) VALUES (?)")
+	if err != nil {
+		return errMessage(c, err, http.StatusBadRequest, "Unable to open database")
+	}
+	defer stmt.Close()
+	
+	_, err = stmt.Exec(category)
+	if err != nil {
+		return errMessage(c, err, http.StatusBadRequest, "Unable to execute sql command")
+	}
 
 	return c.JSON(http.StatusOK, res)
 }

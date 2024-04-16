@@ -259,6 +259,45 @@ func getImg(c echo.Context) error {
 	return c.File(imgPath)
 }
 
+
+func searchItem(c echo.Context) error {
+	keyword := c.QueryParam("keyword")
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return errMessage(c, err, http.StatusBadRequest, "Unable to open database")
+	}
+	defer db.Close()
+
+	stmt, err := db.Prepare("SELECT items.id, items.name, categories.name, items.image_name FROM items LEFT JOIN categories ON items.category = categories.id WHERE items.name LIKE CONCAT('%',?,'%')")
+	if err != nil {
+		return errMessage(c, err, http.StatusBadRequest, "Unable to prepare SQL statement")
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query(keyword)
+	if err != nil {
+		return errMessage(c, err, http.StatusBadRequest, "Unable to execute SQL statement")
+	}
+	defer rows.Close()
+
+	var items Items
+	for rows.Next() {
+		var item Item
+		err := rows.Scan(&item.ID, &item.Name, &item.Category, &item.Image)
+		if err != nil {
+			return errMessage(c, err, http.StatusInternalServerError, "Unable to scan rows")
+		}
+		
+		items.Items = append(items.Items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return errMessage(c, err, http.StatusInternalServerError, "Error iterating over rows")
+	}
+	
+	return c.JSON(http.StatusOK, items)
+}
+
 func main() {
 	e := echo.New()
 
@@ -283,6 +322,8 @@ func main() {
 	e.GET("/image/:imageFilename", getImg)
 	e.GET("/items", getItems)
 	e.GET("/items/:item_id", getItem)
+	e.GET("/search", searchItem)
+
 
 	// Start server
 	e.Logger.Fatal(e.Start(":9000"))

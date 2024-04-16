@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"strconv"
 	"strings"
 
 	"github.com/labstack/echo/v4"
@@ -164,7 +165,51 @@ func addCategory(c echo.Context) error{
 	return c.JSON(http.StatusOK, res)
 }
 
-func getItems(c echo.Context) error {
+
+func getItem(c echo.Context) error {
+	itemIDStr := c.Param("item_id")
+	itemID, err := strconv.Atoi(itemIDStr)
+	if err != nil {
+		errMessage(c, err, http.StatusBadRequest, "Unable to convert item_id to int")
+	}
+
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return errMessage(c, err, http.StatusBadRequest, "Unable to open database")
+	}
+	defer db.Close()
+
+	stmt, err := db.Prepare("SELECT items.id,items.name,categories.name,items.image_name FROM items LEFT JOIN categories ON items.category=categories.id")
+	if err != nil {
+		return errMessage(c, err, http.StatusBadRequest, "Unable to open database")
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		return errMessage(c, err, http.StatusBadRequest, "Unable to execute SQL statement")
+	}
+	defer rows.Close()
+
+	var items Items
+	for rows.Next() {
+		var item Item
+		err := rows.Scan(&item.ID, &item.Name, &item.Category, &item.Image)
+		if err != nil {
+			return errMessage(c, err, http.StatusInternalServerError, "Unable to scan rows")
+		}
+		items.Items = append(items.Items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return errMessage(c, err, http.StatusInternalServerError, "Error iterating over rows")
+	}
+
+
+	return c.JSON(http.StatusOK, items.Items[itemID-1])
+}
+
+func getItems(c echo.Context) (error) {
 	db, err := sql.Open("sqlite3", dbPath)
 	if err != nil {
 		return errMessage(c, err, http.StatusBadRequest, "Unable to open database")
@@ -236,7 +281,8 @@ func main() {
 	e.POST("/items", addItem)
 	e.POST("/category",addCategory)
 	e.GET("/image/:imageFilename", getImg)
-	e.GET("/getItems", getItems)
+	e.GET("/items", getItems)
+	e.GET("/items/:item_id", getItem)
 
 	// Start server
 	e.Logger.Fatal(e.Start(":9000"))

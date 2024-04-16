@@ -1,8 +1,11 @@
 package main
 
 import (
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path"
@@ -11,6 +14,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/gommon/log"
+
+	"mime/multipart"
 )
 
 const (
@@ -35,6 +40,26 @@ func root(c echo.Context) error {
 	return c.JSON(http.StatusOK, res)
 }
 
+func hashImg(c echo.Context, image *multipart.FileHeader)(string,error){
+	hash:=sha256.New()
+
+	imgFile,err:=image.Open()
+	if err != nil {
+		errMessage(c, err, http.StatusBadRequest, "Unable to open the image")
+	}
+	defer imgFile.Close()
+
+	if _, err := io.Copy(hash, imgFile); err != nil {
+		errMessage(c, err, http.StatusBadRequest, "Unable to copy imgFile to hash")
+	}
+
+	hashValue := hash.Sum(nil)
+	hashString := hex.EncodeToString(hashValue)
+	imgName := hashString + ".jpg"
+
+	return imgName,err
+}
+
 func addItem(c echo.Context) error {
 	name := c.FormValue("name")
 	c.Logger().Infof("Receive item: %s", name)
@@ -46,19 +71,6 @@ func addItem(c echo.Context) error {
 	return c.JSON(http.StatusOK, res)
 }
 
-func getImg(c echo.Context) error {
-	imgPath := path.Join(ImgDir, c.Param("imageFilename"))
-
-	if !strings.HasSuffix(imgPath, ".jpg") {
-		res := Response{Message: "Image path does not end with .jpg"}
-		return c.JSON(http.StatusBadRequest, res)
-	}
-	if _, err := os.Stat(imgPath); err != nil {
-		c.Logger().Debugf("Image not found: %s", imgPath)
-		imgPath = path.Join(ImgDir, "default.jpg")
-	}
-	return c.File(imgPath)
-}
 
 func addCategory(c echo.Context) error{
 	category := c.FormValue("category")
@@ -76,13 +88,28 @@ func addCategory(c echo.Context) error{
 		return errMessage(c, err, http.StatusBadRequest, "Unable to open database")
 	}
 	defer stmt.Close()
-	
+
 	_, err = stmt.Exec(category)
 	if err != nil {
 		return errMessage(c, err, http.StatusBadRequest, "Unable to execute sql command")
 	}
 
 	return c.JSON(http.StatusOK, res)
+}
+
+
+func getImg(c echo.Context) error {
+	imgPath := path.Join(ImgDir, c.Param("imageFilename"))
+
+	if !strings.HasSuffix(imgPath, ".jpg") {
+		res := Response{Message: "Image path does not end with .jpg"}
+		return c.JSON(http.StatusBadRequest, res)
+	}
+	if _, err := os.Stat(imgPath); err != nil {
+		c.Logger().Debugf("Image not found: %s", imgPath)
+		imgPath = path.Join(ImgDir, "default.jpg")
+	}
+	return c.File(imgPath)
 }
 
 func main() {

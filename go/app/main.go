@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path"
@@ -15,15 +16,17 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/labstack/gommon/log"
 
-	"mime/multipart"
+	_ "github.com/mattn/go-sqlite3"
+)
+
+
+
+const (
+	imgDir = "images"
 )
 
 const (
-	ImgDir = "images"
-)
-
-const (
-	DbDir="../../db"
+	dbPath="./../db/mercari.sqlite3"
 )
 
 type Response struct {
@@ -36,7 +39,13 @@ func errMessage(c echo.Context, err error, status int, message string) error {
 }
 
 func root(c echo.Context) error {
-	res := Response{Message: "Hello, world!"}
+	dir, err := os.Getwd() // イニシャライザでカレントディレクトリを取得
+	if err != nil {
+		panic(err)
+	}
+
+	message:=fmt.Sprintf("Hello,World:%s",  dir)
+	res := Response{Message: message}
 	return c.JSON(http.StatusOK, res)
 }
 
@@ -62,22 +71,69 @@ func hashImg(c echo.Context, image *multipart.FileHeader)(string,error){
 
 func addItem(c echo.Context) error {
 	name := c.FormValue("name")
-	c.Logger().Infof("Receive item: %s", name)
+	category := c.FormValue("category")
+	img,err := c.FormFile("image")
+	if err != nil {
+		errMessage(c, err, http.StatusBadRequest, "Unable to get image")
+	}
 
-	message := fmt.Sprintf("item received: %s", name)
+	imgName, err := hashImg(c, img)
+	if err != nil {
+		errMessage(c, err, http.StatusBadRequest, "Fail to convert image to hash string")
+	}
+
+	message := fmt.Sprintf("Receive item: {name:%s category:%s image:%s}", name,category,imgName)
 	res := Response{Message: message}
 
+	imgFile,err:=img.Open()
+	if err != nil{
+		return errMessage(c, err, http.StatusBadRequest, "Unable to open the image")
+	}
+	defer imgFile.Close()
+
+	savedImgPath := imgDir+imgName
+	savedImgFile,err:=os.Create(savedImgPath)
+	if err != nil {
+		return errMessage(c, err, http.StatusBadRequest, "Unable to create the image file")
+	}
+	defer savedImgFile.Close()
+
+	if _, err := io.Copy(savedImgFile, imgFile); err != nil {
+		return errMessage(c, err, http.StatusBadRequest, "Unable to save the image file")
+	}
 	
+	db,err:=sql.Open("sqlite3",dbPath)
+	if err != nil {
+		return errMessage(c, err, http.StatusBadRequest, "Unable to open database")
+	}
+	defer db.Close()
+
+	var categoryID int
+	if err := db.QueryRow("SELECT id FROM categories WHERE name==?", category).Scan(&categoryID); err != nil {
+		return errMessage(c, err, http.StatusBadRequest, "Unable to get categoryID from categoryName")
+	}
+
+	stmt, err := db.Prepare("INSERT INTO items(name,category,image_name) VALUES (?,?,?)")   //ここ変えた
+	if err != nil {
+		return errMessage(c, err, http.StatusBadRequest, "Unable to open database")
+	}
+	defer stmt.Close()
+	_, err = stmt.Exec(name, categoryID, imgName)
+	if err != nil {
+		return errMessage(c, err, http.StatusBadRequest, "Unable to open database")
+	}
+
 	return c.JSON(http.StatusOK, res)
 }
 
 
 func addCategory(c echo.Context) error{
 	category := c.FormValue("category")
-	message := fmt.Sprintf("category received: %s",category)
+	message := fmt.Sprintf("category received: %s ",category)
 	res := Response{Message: message}
+	
 
-	db,err:=sql.Open("sqlite3",DbDir)
+	db,err:=sql.Open("sqlite3",dbPath)
 	if err != nil {
 		return errMessage(c, err, http.StatusBadRequest, "Unable to open database")
 	}
@@ -99,7 +155,7 @@ func addCategory(c echo.Context) error{
 
 
 func getImg(c echo.Context) error {
-	imgPath := path.Join(ImgDir, c.Param("imageFilename"))
+	imgPath := path.Join(imgDir, c.Param("imageFilename"))
 
 	if !strings.HasSuffix(imgPath, ".jpg") {
 		res := Response{Message: "Image path does not end with .jpg"}
@@ -107,7 +163,7 @@ func getImg(c echo.Context) error {
 	}
 	if _, err := os.Stat(imgPath); err != nil {
 		c.Logger().Debugf("Image not found: %s", imgPath)
-		imgPath = path.Join(ImgDir, "default.jpg")
+		imgPath = path.Join(imgDir, "default.jpg")
 	}
 	return c.File(imgPath)
 }

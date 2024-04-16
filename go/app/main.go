@@ -33,6 +33,17 @@ type Response struct {
 	Message string `json:"message"`
 }
 
+type Item struct {
+	ID       int    `json:"id"`
+	Name     string `json:"name"`
+	Category string `json:"category"`
+	Image    string `json:"image"`
+}
+
+type Items struct{
+	Items []Item `json:"items"`
+}
+
 func errMessage(c echo.Context, err error, status int, message string) error {
 	errorMessage := fmt.Sprintf("%s:%s", message, err)
 	return c.JSON(status, Response{Message: errorMessage})
@@ -153,6 +164,41 @@ func addCategory(c echo.Context) error{
 	return c.JSON(http.StatusOK, res)
 }
 
+func getItems(c echo.Context) error {
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return errMessage(c, err, http.StatusBadRequest, "Unable to open database")
+	}
+	defer db.Close()
+
+	stmt, err := db.Prepare("SELECT items.id,items.name,categories.name,items.image_name FROM items LEFT JOIN categories ON items.category=categories.id")
+	if err != nil {
+		return errMessage(c, err, http.StatusBadRequest, "Unable to open database")
+	}
+	defer stmt.Close()
+
+	rows, err := stmt.Query()
+	if err != nil {
+		return errMessage(c, err, http.StatusBadRequest, "Unable to execute SQL statement")
+	}
+	defer rows.Close()
+
+	var items Items
+	for rows.Next() {
+		var item Item
+		err := rows.Scan(&item.ID, &item.Name, &item.Category, &item.Image)
+		if err != nil {
+			return errMessage(c, err, http.StatusInternalServerError, "Unable to scan rows")
+		}
+		items.Items = append(items.Items, item)
+	}
+
+	if err := rows.Err(); err != nil {
+		return errMessage(c, err, http.StatusInternalServerError, "Error iterating over rows")
+	}
+	return c.JSON(http.StatusOK, items)
+}
+
 
 func getImg(c echo.Context) error {
 	imgPath := path.Join(imgDir, c.Param("imageFilename"))
@@ -190,7 +236,7 @@ func main() {
 	e.POST("/items", addItem)
 	e.POST("/category",addCategory)
 	e.GET("/image/:imageFilename", getImg)
-
+	e.GET("/getItems", getItems)
 
 	// Start server
 	e.Logger.Fatal(e.Start(":9000"))

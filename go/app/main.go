@@ -103,7 +103,7 @@ func addItem(c echo.Context) error {
 	}
 	defer imgFile.Close()
 
-	savedImgPath := imgDir+imgName
+	savedImgPath := imgDir+"/"+imgName
 	savedImgFile,err:=os.Create(savedImgPath)
 	if err != nil {
 		return errMessage(c, err, http.StatusBadRequest, "Unable to create the image file")

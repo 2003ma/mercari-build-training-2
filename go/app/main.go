@@ -23,11 +23,11 @@ import (
 
 
 const (
-	imgDir = "images"
+	imgDir = "../images"
 )
 
 const (
-	dbPath="./../db/mercari.sqlite3"
+	dbPath="../db/mercari.sqlite3"
 )
 
 type Response struct {
@@ -103,7 +103,7 @@ func addItem(c echo.Context) error {
 	}
 	defer imgFile.Close()
 
-	savedImgPath := imgDir+imgName
+	savedImgPath := imgDir+"/"+imgName
 	savedImgFile,err:=os.Create(savedImgPath)
 	if err != nil {
 		return errMessage(c, err, http.StatusBadRequest, "Unable to create the image file")
